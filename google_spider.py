@@ -14,6 +14,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException
 requests.packages.urllib3.disable_warnings()
+from browser_data import agent
 
 
 class CustomError(Exception):
@@ -82,31 +83,6 @@ def save_img(filename, r):
 
 
 def download_image(url, save):
-    agent = {
-        "Connection": "close",
-        "authority": "encrypted - tbn0.gstatic.com",
-        "method": "GET",
-        "accept-encoding": "gzip, deflate, br, zstd",
-        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
-        "cache-control": "no-cache",
-        "pragma": "no-cache",
-        "priority": "u=0, i",
-        "sec-ch-ua": '"Microsoft Edge";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-        "sec-ch-ua-arch": "x86",
-        "sec-ch-ua-bitness": "64",
-        "sec-ch-ua-full-version-list": '"Microsoft Edge";v="131.0.2903.146", "Chromium";v="131.0.6778.265", "Not_A Brand";v="24.0.0.0"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-model": "",
-        "sec-ch-ua-platform": "Windows",
-        "sec-ch-ua-platform-version": "19.0.0",
-        "sec-ch-ua-wow64": "?0",
-        "sec-fetch-dest": "document",
-        "sec-fetch-mode": "navigate",
-        "sec-fetch-site": "none",
-        "sec-fetch-user": "?1",
-        "upgrade-insecure-requests": "1",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0"
-    }
     r = requests.get(url, headers=agent, stream=True, verify=False)
     try:
         if r.status_code == 200:
@@ -131,7 +107,7 @@ def crawl(keywords, save_root_dir, download_number, logger):
     wd = Edge(service=Service('msedgedriver.exe'))  # 启动浏览器驱动，运行浏览器
     wd.set_page_load_timeout(100)  # 页面加载最大超时
     wd.maximize_window()  # 最大窗口
-    url = f"https://www.google.com/search?q={keywords}&tbm=isch&hl=zh-CN&tbs=qdr:&sa=X&ved=0CAIQpwVqFwoTCOiMx5-F04YDFQAAAAAdAAAAABAC&biw=1217&bih=630"
+    url = f"https://www.google.com/search?q={keywords}&tbm=isch&hl=zh-CN&tbs=isz:m:&sa=X&ved=0CAIQpwVqFwoTCOiMx5-F04YDFQAAAAAdAAAAABAC&biw=1217&bih=630"
     wd.get(url=url)
     time.sleep(3)
 
@@ -207,6 +183,7 @@ def crawl(keywords, save_root_dir, download_number, logger):
         except:
             logger.info("The scroll bar is already at the end.")
             break
+    wd.close()
 
 
 def main(opt):
