@@ -5,9 +5,9 @@ import logging
 import requests
 import os
 import hashlib
-import concurrent.futures
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.edge.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver import Edge
 from selenium.webdriver.support.ui import WebDriverWait
@@ -41,7 +41,11 @@ def setup_logger(log_dir=None, filename=""):
     return root_logger
 
 
-def load_keywords_data(file_path, logger):
+# 创建日志记录
+logger = setup_logger(log_dir="./")
+
+
+def load_keywords_data(file_path):
     keywords = []
     with open(file_path, 'r', encoding='utf-8') as f:
         for line in f.readlines():
@@ -50,14 +54,15 @@ def load_keywords_data(file_path, logger):
     return keywords
 
 
-def multi_thread(param):
-    logging.info("Multi Thread starting.")
-    with ThreadPoolExecutor(max_workers=4) as executor:  # 创建一个最多10个线程的线程池
+def multi_thread(param, workers=None):
+    logger.info("Multi Thread starting.")
+    logger.info("number of process: {}".format(os.cpu_count() if workers is None else workers))
+    with ProcessPoolExecutor(max_workers=workers) as executor:  # 创建一个最多10个线程的线程池
         # 使用executor.submit提交任务到线程池
         futures = [executor.submit(crawl, *item) for item in param]
         # 等待所有任务完成，如果需要处理异常，可以在这里添加对futures的遍历和异常检查
-        concurrent.futures.wait(futures,timeout=5)
-    logging.info("Multi Thread ending.")
+        # concurrent.futures.wait(futures,timeout=5)
+    logger.info("Multi Thread ending.")
 
 
 class image_loaded(object):
@@ -97,14 +102,22 @@ def download_image(url, save):
         return False, r.status_code
 
 
-def crawl(keywords, save_root_dir, download_number, logger):
+def crawl(keywords, save_root_dir, download_number, headless):
     # 是否创建存储目录
     save_dir = os.path.join(save_root_dir, keywords)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
         logger.info("create directory {}".format(save_dir))
+    # 是否启用GUI界面
+    if headless:
+        logger.info("No GPU Mode!")
+        edge_options = Options()
+        edge_options.add_argument("--headless") # 启用无界面模式
+        edge_options.add_argument("--disable-gpu") # 禁用GPU加速
+    else:
+        edge_options = None
     # 初始化
-    wd = Edge(service=Service('msedgedriver.exe'))  # 启动浏览器驱动，运行浏览器
+    wd = Edge(options=edge_options, service=Service('msedgedriver.exe'))  # 启动浏览器驱动，运行浏览器
     wd.set_page_load_timeout(100)  # 页面加载最大超时
     wd.maximize_window()  # 最大窗口
     url = f"https://www.google.com/search?q={keywords}&tbm=isch&hl=zh-CN&tbs=isz:m:&sa=X&ved=0CAIQpwVqFwoTCOiMx5-F04YDFQAAAAAdAAAAABAC&biw=1217&bih=630"
@@ -125,12 +138,12 @@ def crawl(keywords, save_root_dir, download_number, logger):
                 try:
                     more_element = wd.find_element(By.XPATH, '//span[@class="RVQdVd"]')
                     if more_element:
-                        logging.info("finding more image element...")
+                        logger.info("finding more image element...")
                         more_element.click()  # 如果找到，点击按钮
                         time.sleep(3)  # 等待加载
                 except NoSuchElementException:
                     # 如果没有找到元素，继续循环等待加载
-                    logging.info("not find more image elements.")
+                    logger.info("not find more image elements.")
             time.sleep(1.0)
             # 找到页面中的所有图片元素
             img_elements = WebDriverWait(wd, 20).until(
@@ -171,7 +184,7 @@ def crawl(keywords, save_root_dir, download_number, logger):
                 # 记录抓取过的这批图
                 crawed_elements = crawed_elements.union(set(img_elements))
                 # 回退
-                logging.info("go back.")
+                logger.info("go back.")
                 wd.back()
                 time.sleep(0.1)
                 # 如果设置下载量且达到数量
@@ -189,35 +202,35 @@ def crawl(keywords, save_root_dir, download_number, logger):
 def main(opt):
     config_path = opt.file
     save_root_dir = opt.save
-    log_dir = opt.log
     multi = opt.multi
+    workers = opt.workers
+    headless = opt.headless
     download_number = opt.num
 
-    # 创建日志记录
-    logger = setup_logger(log_dir=log_dir)
     # 加载关键词文件
-    keywords_list = load_keywords_data(config_path, logger)
+    keywords_list = load_keywords_data(config_path)
     # 是否多线程执行
     if multi:
-        param_list = [[keywords, save_root_dir, download_number, logger] for keywords in keywords_list]
-        multi_thread(param_list)
+        param_list = [[keywords, save_root_dir, download_number, headless] for keywords in keywords_list]
+        multi_thread(param_list, workers=workers)
     else:
         # 对每个关键词操作
         for keywords in keywords_list:
             # 爬取
             start_time = time.time()
-            crawl(keywords, save_root_dir, download_number, logger)
+            crawl(keywords, save_root_dir, download_number, headless)
             end_time = time.time()
-            logging.info("{} total time:{}".format(keywords, end_time - start_time))
+            logger.info("{} total time:{}".format(keywords, end_time - start_time))
 
 
 def parse_opt():
     parser = argparse.ArgumentParser(description="Google Image Spider")
-    parser.add_argument('--file', type=str, default='./conf/test.txt', help='The path of keywords file.')
+    parser.add_argument('--file', type=str, default='./conf/word.txt', help='The path of keywords file. default "./conf/word.txt".')
     parser.add_argument('--save', type=str, default='./download_file', help='The path of save directory. If not exist, auto created it.')
-    parser.add_argument('--log', type=str, default='./', help='The path of directory for save log file.')
     parser.add_argument('--num', type=int, default=0, help='The number of images to download. default all images.')
-    parser.add_argument('--multi', action="store_true", help='multi-thread download.')
+    parser.add_argument('--headless', action="store_true", help='no GUI mode.')
+    parser.add_argument('--multi', action="store_true", help='multi-process download.')
+    parser.add_argument('--workers', type=int, default=None, help='The maximum number of processes in the process pool. default all.')
     opt = parser.parse_args()
     return opt
 
